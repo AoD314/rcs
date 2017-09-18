@@ -62,10 +62,10 @@ fn run_server () {
     }
 }
 
-fn run_client (ip: &str) {
+fn run_client (ip: &str, num: i32) {
     let mut list_threads = Vec::new();
 
-    for _ in 0..4 {
+    for _ in 0..num {
         let ip = String::from(ip);
 
         list_threads.push(thread::spawn(move || {
@@ -98,7 +98,8 @@ fn main() {
                                .takes_value(true))
                           .arg(Arg::with_name("process")
                                .short("p")
-                               .help("run client"))
+                               .help("number of threads")
+                               .takes_value(true))
                           .get_matches();
 
     if matches.is_present("server") {
@@ -109,9 +110,11 @@ fn main() {
 
 
         let ip: &str = matches.value_of("client").unwrap();
+        let num: i32 = matches.value_of("process").unwrap().parse().unwrap();
 
-        println!("IP: {:?}", &ip);
-        run_client(&ip)
+        println!(" ip address: {:?}", &ip);
+        println!("num threads: {:?}", &num);
+        run_client(&ip, num);
     }
     println!("Done");
 }
