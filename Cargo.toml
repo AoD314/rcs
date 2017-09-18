@@ -5,3 +5,6 @@ authors = ["Andrey Morozov <morozov.andrey.vmk@gmail.com>"]
 
 [dependencies]
 clap = "~2.19.0"
+
+[profile.dev]
+debug = true

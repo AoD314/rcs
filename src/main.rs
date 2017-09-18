@@ -24,7 +24,7 @@ fn print_size(size: usize) {
 }
 
 fn handle_client(mut stream: TcpStream) {
-    let mut read_buffer = [0; 1024*1024];
+    let mut read_buffer = vec![0; 32*1024*1024];
     let mut total_size = 0;
 
     let now = Instant::now();
@@ -62,16 +62,18 @@ fn run_server () {
     }
 }
 
-fn run_client (ip: &'static str) {
+fn run_client (ip: &str) {
     let mut list_threads = Vec::new();
 
-    for _ in 0..10 {
+    for _ in 0..4 {
+        let ip = String::from(ip);
 
         list_threads.push(thread::spawn(move || {
-            let mut stream = TcpStream::connect(ip).unwrap();
-            let arr = [1; 1024*1024];
 
-            for _ in 0..(8 * 1024) {
+            let mut stream = TcpStream::connect(ip.as_str()).unwrap();
+            let arr = vec![1; 32*1024*1024];
+
+            for _ in 0..(8*128) {
                 let _ = stream.write(&arr);
             }
         }));
@@ -94,18 +96,22 @@ fn main() {
                                .short("c")
                                .help("run client")
                                .takes_value(true))
+                          .arg(Arg::with_name("process")
+                               .short("p")
+                               .help("run client"))
                           .get_matches();
-
 
     if matches.is_present("server") {
         println!("Running SERVER");
         run_server()
     } else {
         println!("Running CLIENT");
-        let ip = "localhost:5201"; //matches.value_of("client").unwrap();
 
-        println!("IP: {:?}", ip);
-        run_client(ip)
+
+        let ip: &str = matches.value_of("client").unwrap();
+
+        println!("IP: {:?}", &ip);
+        run_client(&ip)
     }
     println!("Done");
 }
