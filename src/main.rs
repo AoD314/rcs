@@ -47,7 +47,10 @@ fn handle_client(mut stream: TcpStream) {
 }
 
 fn run_server () {
-    let listener = TcpListener::bind("127.0.0.1:5201").unwrap();
+    let listener = match TcpListener::bind("127.0.0.1:5201") {
+        Ok(val) => val,
+        Err(err) => panic!("Can't create TcpListener on 127.0.0.1:5201: {:?}", err),
+    };
 
     for stream in listener.incoming() {
         match stream {
@@ -57,12 +60,14 @@ fn run_server () {
                     handle_client(stream);
                 }).unwrap();
             }
-            Err(e) => { println!("ERROR {:?}", e); }
+            Err(e) => {
+                println!("ERROR {:?}", e);
+            }
         }
     }
 }
 
-fn run_client (ip: &str, num: i32) {
+fn run_clients(ip: &str, num: i32) {
     let mut list_threads = Vec::new();
 
     for _ in 0..num {
@@ -70,7 +75,11 @@ fn run_client (ip: &str, num: i32) {
 
         list_threads.push(thread::spawn(move || {
 
-            let mut stream = TcpStream::connect(ip.as_str()).unwrap();
+            let mut stream = match TcpStream::connect(ip.as_str()) {
+                Ok(val) => val,
+                Err(err) => panic!("Can't create TcpStream to {:?}: {:?}", ip.as_str(), err),
+            };
+
             let arr = vec![1; 32*1024*1024];
 
             for _ in 0..(8*128) {
@@ -105,16 +114,18 @@ fn main() {
     if matches.is_present("server") {
         println!("Running SERVER");
         run_server()
-    } else {
+    } else if matches.is_present("client"){
         println!("Running CLIENT");
-
 
         let ip: &str = matches.value_of("client").unwrap();
         let num: i32 = matches.value_of("process").unwrap().parse().unwrap();
 
         println!(" ip address: {:?}", &ip);
         println!("num threads: {:?}", &num);
-        run_client(&ip, num);
+
+        run_clients(&ip, num);
+    } else {
+        println!("Nothing to run !");
     }
     println!("Done");
 }
