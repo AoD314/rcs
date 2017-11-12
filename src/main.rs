@@ -93,7 +93,7 @@ fn run_server () {
     }
 }
 
-fn run_clients(ip: &str, num: i32) {
+fn run_clients(ip: &str, num: i32, transfer_time: u64) {
     let mut list_threads = Vec::new();
 
     for _ in 0..num {
@@ -106,9 +106,14 @@ fn run_clients(ip: &str, num: i32) {
                 Err(err) => panic!("Can't create TcpStream to {:?}: {:?}", ip.as_str(), err),
             };
 
-            let arr = vec![1; 2*1024*1024];
+            let arr = vec![1; 1*1024*1024];
 
-            for _ in 0..(8*128) {
+            let time = Instant::now();
+
+            loop {
+                if time.elapsed() >= Duration::new(transfer_time, 0) {
+                    break
+                }
                 let _ = stream.write(&arr);
             }
         }));
@@ -135,6 +140,10 @@ fn main() {
                                .short("p")
                                .help("number of threads")
                                .takes_value(true))
+                          .arg(Arg::with_name("time")
+                               .short("t")
+                               .help("time to send data in secs")
+                               .takes_value(true))
                           .get_matches();
 
     if matches.is_present("server") {
@@ -145,11 +154,13 @@ fn main() {
 
         let ip: &str = matches.value_of("client").unwrap();
         let num: i32 = matches.value_of("process").unwrap().parse().unwrap();
+        let time: u64 = matches.value_of("time").unwrap().parse().unwrap();
 
         println!(" ip address: {:?}", &ip);
         println!("num threads: {:?}", &num);
+        println!(" time(secs): {:?}", &time);
 
-        run_clients(&ip, num);
+        run_clients(&ip, num, time);
     } else {
         println!("Nothing to run !");
     }
