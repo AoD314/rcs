@@ -2,57 +2,83 @@ extern crate clap;
 use clap::{Arg, App};
 
 use std::io::prelude::*;
-use std::net::{TcpListener,TcpStream};
-use std::time::{Instant};
+use std::net::{SocketAddr, TcpListener,TcpStream};
+use std::time::{Duration, Instant};
 use std::thread;
 
-
-fn print_size(size: usize) {
+fn size_to_str(size: u64) -> String {
 
     if size < 1024 {
-        println!("size: {:?} bytes", size);
+        format!("{:18?} bytes", size)
     }
     else if size < (1024 * 1024) {
-        println!("size: {:.3} Kb", size as f64 / 1024.0);
+        format!("{:10.3} Kb", size as f64 / 1024.0)
     }
     else if size < (1024 * 1024 * 1024) {
-        println!("size: {:.3} Mb", size as f64 / (1024.0 * 1024.0));
+        format!("{:10.3} Mb", size as f64 / (1024.0 * 1024.0))
     }
     else {
-        println!("size: {:.3} Gb", size as f64 / (1024.0 * 1024.0 * 1024.0));
+        format!("{:10.3} Gb", size as f64 / (1024.0 * 1024.0 * 1024.0))
     }
+}
+
+fn duration_to_time(d: Duration) -> f64 {
+    d.as_secs() as f64 + d.subsec_nanos() as f64 * 1e-9
+}
+
+fn get_speed_by_time_and_size(time: f64, size: u64) -> f64 {
+    ((size >> (10 + 10 - 3)) as f64) / time
+}
+
+fn print_stat(addr: &SocketAddr, time: f64, size: u64) {
+    let speed = get_speed_by_time_and_size(time, size);
+    let psize = size_to_str(size);
+    println!("[{}]: {:} ({:18} bytes) in {:12.6} secs  -->  {:8.1} Mbps", addr, psize, size, time, speed);
 }
 
 fn handle_client(mut stream: TcpStream) {
     let mut read_buffer = vec![0; 32*1024*1024];
-    let mut total_size = 0;
+    let mut total_size: u64 = 0;
+    let mut local_size: u64 = 0;
 
-    let now = Instant::now();
+    let     total_time = Instant::now();
+    let mut local_time = Instant::now();
+
+    let link_partner_address = stream.peer_addr().unwrap();
 
     loop {
+        let local_duration = local_time.elapsed();
+        if local_duration >= Duration::new(1, 0) {
+            let time = duration_to_time(local_duration);
+            print_stat(&link_partner_address, time, local_size);
+            local_size = 0;
+            local_time = Instant::now();
+        }
         let data = stream.read(&mut read_buffer);
-        let size = data.unwrap();
+        let size: u64 = data.unwrap() as u64;
         if size <= 0 {
             break;
         }
         total_size += size;
+        local_size += size;
     }
 
-    let duration = now.elapsed();
-    let time: f64 = duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
+    let total_duration = total_time.elapsed();
+    let time = duration_to_time(total_duration);
 
-    print_size(total_size);
-    println!("time : {:8.2} secs", time);
-    println!("speed: {:8.1} Mbytes / secs", (total_size as f64 / (1024.0 * 1024.0)) / time);
+    print_stat(&link_partner_address, time, total_size);
 }
 
 fn run_server () {
-    let listener = match TcpListener::bind("127.0.0.1:5201") {
+    let listener = match TcpListener::bind(("0.0.0.0", 5201)) {
         Ok(val) => val,
         Err(err) => panic!("Can't create TcpListener on 127.0.0.1:5201: {:?}", err),
     };
 
+    println!("Created TcpListener({:?})", listener.local_addr().unwrap());
+
     for stream in listener.incoming() {
+        println!("working on: {:?}", &stream);
         match stream {
             Ok(stream) => {
                 let builder = thread::Builder::new();
@@ -80,7 +106,7 @@ fn run_clients(ip: &str, num: i32) {
                 Err(err) => panic!("Can't create TcpStream to {:?}: {:?}", ip.as_str(), err),
             };
 
-            let arr = vec![1; 32*1024*1024];
+            let arr = vec![1; 2*1024*1024];
 
             for _ in 0..(8*128) {
                 let _ = stream.write(&arr);
