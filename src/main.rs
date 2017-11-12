@@ -66,7 +66,9 @@ fn handle_client(mut stream: TcpStream) {
     let total_duration = total_time.elapsed();
     let time = duration_to_time(total_duration);
 
+    println!("-------------------------------------------------------------------------------------------------------");
     print_stat(&link_partner_address, time, total_size);
+    println!("-------------------------------------------------------------------------------------------------------");
 }
 
 fn run_server () {
