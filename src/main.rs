@@ -1,10 +1,12 @@
+#![feature(udp_peer_addr)]
+
 extern crate clap;
 use clap::{Arg, App};
 
 use std::io::prelude::*;
-use std::net::{SocketAddr, TcpListener,TcpStream};
 use std::time::{Duration, Instant};
 use std::thread;
+use std::net::{SocketAddr, SocketAddrV4, TcpListener, TcpStream, UdpSocket, IpAddr, Ipv4Addr};
 
 fn size_to_str(size: u64) -> String {
 
@@ -71,7 +73,47 @@ fn handle_client(mut stream: TcpStream) {
     println!("-------------------------------------------------------------------------------------------------------");
 }
 
+fn handle_client_udp(socket: UdpSocket) {
+    println!(" call: handle_client_udp");
+
+    let mut read_buffer = vec![0; 32*1024*1024];
+    let mut total_size: u64 = 0;
+    let mut local_size: u64 = 0;
+
+    let     total_time = Instant::now();
+    let mut local_time = Instant::now();
+
+    // socket.set_read_timeout(Some(Duration::new(15, 0))).unwrap();
+    let link_partner_address = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 5400)); // socket.peer_addr().unwrap();
+
+    loop {
+        let local_duration = local_time.elapsed();
+        if local_duration >= Duration::new(1, 0) {
+            let time = duration_to_time(local_duration);
+            print_stat(&link_partner_address, time, local_size);
+            local_size = 0;
+            local_time = Instant::now();
+        }
+        let (size, _) = socket.recv_from(&mut read_buffer).expect("Didn't receive data");
+        let size: u64 = size as u64;
+        if size <= 0 {
+            break;
+        }
+        total_size += size;
+        local_size += size;
+    }
+
+    let total_duration = total_time.elapsed();
+    let time = duration_to_time(total_duration);
+
+    println!("-------------------------------------------------------------------------------------------------------");
+    print_stat(&link_partner_address, time, total_size);
+    println!("-------------------------------------------------------------------------------------------------------");
+}
+
+
 fn run_server () {
+
     let listener = match TcpListener::bind(("0.0.0.0", 5201)) {
         Ok(val) => val,
         Err(err) => panic!("Can't create TcpListener on 127.0.0.1:5201: {:?}", err),
@@ -93,6 +135,23 @@ fn run_server () {
             }
         }
     }
+}
+
+fn run_server_udp () {
+
+    let socket = match UdpSocket::bind(("127.0.0.1", 5201)) {
+        Ok(val) => val,
+        Err(err) => panic!("Can't create UdpSocket on 127.0.0.1:5201: {:?}", err),
+    };
+
+    println!("Created UdpSocket({:?})", socket.local_addr().unwrap());
+
+    let builder = thread::Builder::new();
+    let handler = builder.spawn(|| {
+        handle_client_udp(socket)
+    }).unwrap();
+
+    handler.join().unwrap();
 }
 
 fn run_clients(ip: &str, num: i32, transfer_time: u64) {
@@ -126,6 +185,37 @@ fn run_clients(ip: &str, num: i32, transfer_time: u64) {
     }
 }
 
+fn run_clients_udp(ip: &str, num: i32, transfer_time: u64) {
+    let mut list_threads = Vec::new();
+
+    for thread_id in 0..num {
+        let ip = String::from(ip);
+
+        list_threads.push(thread::spawn(move || {
+
+            let socket = match UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 5300 + thread_id as u16)) {
+                Ok(val) => val,
+                Err(err) => panic!("Can't create UdpSocket to {:?}: {:?}", ip.as_str(), err),
+            };
+
+            let arr = vec![1; 1500];
+
+            let time = Instant::now();
+
+            loop {
+                if time.elapsed() >= Duration::new(transfer_time, 0) {
+                    break
+                }
+                let _ = socket.send_to(&arr, ip.as_str());
+            }
+        }));
+    }
+
+    for t in list_threads {
+        let _ = t.join();
+    }
+}
+
 fn main() {
     let matches = App::new("Client/Server")
                           .version("1.0")
@@ -134,6 +224,9 @@ fn main() {
                           .arg(Arg::with_name("server")
                                .short("s")
                                .help("run server"))
+                          .arg(Arg::with_name("udp")
+                               .short("u")
+                               .help("switch to udp mode"))
                           .arg(Arg::with_name("client")
                                .short("c")
                                .help("run client")
@@ -150,7 +243,11 @@ fn main() {
 
     if matches.is_present("server") {
         println!("Running SERVER");
-        run_server()
+        if matches.is_present("udp") {
+            run_server_udp()
+        } else {
+            run_server()    
+        }        
     } else if matches.is_present("client"){
         println!("Running CLIENT");
 
@@ -162,7 +259,11 @@ fn main() {
         println!("num threads: {:?}", &num);
         println!(" time(secs): {:?}", &time);
 
-        run_clients(&ip, num, time);
+        if matches.is_present("udp") {
+            run_clients_udp(&ip, num, time);
+        } else {
+            run_clients(&ip, num, time);
+        }  
     } else {
         println!("Nothing to run !");
     }
